@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="es">
+<!--
+════════════════════════════════════════════════════════════════════════
+  DiferencialGuiado·AI  ·  VARIANTE Medicina  ·  fork de plantilla-base.html
+  Tutor SOCRÁTICO de diagnóstico diferencial: guía el razonamiento SIN
+  desvelar el diagnóstico. Mantiene un DD priorizado en vivo (probabilidad,
+  a favor / en contra). Datos discriminantes deterministas. Debrief al cerrar.
+  Reutiliza kernel + patrón de chat/datos del motor de paciente.
+  Agentes: Generador de caso · Tutor (respuesta socrática + DD) · Datos · Debrief.
+════════════════════════════════════════════════════════════════════════
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DiferencialGuiado·AI · Tutor de diagnóstico diferencial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<style>
+  :root{
+    --paper:#EAF0EF; --card:#FFFFFF; --ink:#16292E; --muted:#5C7076;
+    --petrol:#0E4B54; --petrol-deep:#0A363D; --petrol-soft:#E3EDEC;
+    --line:#CEDAD8; --amber:#D98A00; --green:#1E9E8A; --coral:#D9573F;
+    --radius:14px; --shadow:0 1px 2px rgba(10,54,61,.06),0 8px 24px rgba(10,54,61,.06);
+  }
+  *{box-sizing:border-box} html,body{margin:0;padding:0}
+  body{font-family:'Inter',system-ui,sans-serif;color:var(--ink);background:var(--paper);line-height:1.5;-webkit-font-smoothing:antialiased}
+  h1,h2,h3,h4{font-family:'Libre Franklin',sans-serif;margin:0;letter-spacing:-.01em}
+  .mono{font-family:'JetBrains Mono',monospace}
+  button{font-family:inherit;cursor:pointer;border:none;background:none}
+  input,select,textarea{font-family:inherit;font-size:14px}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+  header{background:var(--petrol-deep);color:#EAF0EF;position:sticky;top:0;z-index:20;border-bottom:1px solid #0a2a30}
+  .bar{max-width:1240px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand .logo{font-family:'Libre Franklin';font-weight:800;font-size:19px;letter-spacing:-.02em;color:#fff}
+  .brand .logo b{color:var(--amber)}
+  .brand .tag{font-size:11px;color:#8FB3B2;letter-spacing:.14em;text-transform:uppercase}
+
+  main{max-width:1240px;margin:0 auto;padding:22px 20px 60px;display:grid;grid-template-columns:1fr 340px;gap:22px}
+  @media(max-width:920px){main{grid-template-columns:1fr;padding:16px}}
+  .col-side{display:flex;flex-direction:column;gap:16px}
+  @media(max-width:920px){.col-side{order:-1}}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:22px}
+  .panel:last-child{margin-bottom:0}
+  .panel-h{padding:13px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .panel-h h3{font-size:14px;font-weight:700}
+  .panel-h .eyebrow{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .panel-b{padding:18px}
+
+  .field{margin-bottom:14px}.field:last-child{margin-bottom:0}
+  label.lab{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
+  .inp{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#FBFCFC;color:var(--ink)}
+  .inp:focus{outline:2px solid var(--petrol);outline-offset:-1px;border-color:var(--petrol)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:520px){.row2{grid-template-columns:1fr}}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 16px;border-radius:10px;font-weight:600;font-size:14px;transition:.15s}
+  .btn-primary{background:var(--petrol);color:#fff}.btn-primary:hover{background:var(--petrol-deep)}
+  .btn-primary:disabled{background:#9DB4B3;cursor:not-allowed}
+  .btn-amber{background:var(--amber);color:#2b1c00}.btn-amber:hover{filter:brightness(.95)}
+  .btn-ghost{background:var(--petrol-soft);color:var(--petrol)}.btn-ghost:hover{background:#d3e3e1}
+  .btn-line{border:1px solid var(--line);background:#fff;color:var(--ink);font-weight:500;font-size:13px;padding:9px 12px}
+  .btn-line:hover{border-color:var(--petrol);color:var(--petrol)}
+  .btn-block{width:100%} .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+
+  .banner{border-radius:10px;padding:11px 14px;font-size:13px;margin-bottom:14px;display:none}
+  .banner.err{background:#FBE7E2;border:1px solid #E7B4A8;color:#9a2f1a}
+  .banner.info{background:#FFF3D6;border:1px solid #F0D89A;color:#5c4600}
+  .banner.ok{background:#DFF1ED;border:1px solid #A9D8CF;color:#0e6a5c}
+  .spin{width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .foot{max-width:1240px;margin:0 auto;padding:8px 20px 40px;color:var(--muted);font-size:12px}
+  .foot code{font-family:'JetBrains Mono';font-size:11px}
+
+  .present{background:var(--petrol-soft);border:1px solid #bcd6d3;border-radius:12px;padding:14px 16px;margin:0 18px 0;font-size:14.5px;white-space:pre-wrap}
+  .present h4{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--petrol);margin-bottom:6px}
+
+  /* Chat */
+  #chat{padding:18px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;max-height:52vh}
+  .msg{max-width:84%;padding:11px 14px;border-radius:14px;font-size:14.5px;white-space:pre-wrap;word-wrap:break-word}
+  .msg.alumno{align-self:flex-end;background:var(--petrol);color:#fff;border-bottom-right-radius:4px}
+  .msg.tutor{align-self:flex-start;background:#F1F5F4;border:1px solid var(--line);border-bottom-left-radius:4px}
+  .msg .who{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;opacity:.6;margin-bottom:4px;font-family:'JetBrains Mono'}
+  .msg.data{align-self:stretch;max-width:100%;background:#FFF9EC;border:1px solid #F0D89A;color:#5c4600;font-family:'JetBrains Mono';font-size:13px}
+  .msg.data .who{color:var(--amber);opacity:1}
+  .msg.sys{align-self:center;font-size:12px;color:var(--muted);background:transparent;text-align:center;max-width:100%}
+  .typing{align-self:flex-start;color:var(--muted);font-size:13px;padding:6px 14px;display:flex;gap:5px;align-items:center}
+  .typing .dot{width:6px;height:6px;background:var(--petrol);border-radius:50%;animation:bl 1.2s infinite}
+  .typing .dot:nth-child(2){animation-delay:.2s}.typing .dot:nth-child(3){animation-delay:.4s}
+  @keyframes bl{0%,60%,100%{opacity:.25}30%{opacity:1}}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px;border-top:1px solid var(--line);background:#F7FAFA}
+  .actions .btn-line{flex:1;min-width:120px}
+  #composer{border-top:1px solid var(--line);padding:12px 14px;display:flex;gap:9px;align-items:flex-end}
+  #inp{flex:1;resize:none;min-height:44px;max-height:130px;padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:#FBFCFC}
+  #inp:focus{outline:2px solid var(--petrol);outline-offset:-1px;border-color:var(--petrol)}
+
+  /* DD panel */
+  .dd-empty{padding:22px 16px;text-align:center;color:var(--muted);font-size:13px}
+  .dd{border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:10px}
+  .dd.descartada{opacity:.55}
+  .dd-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .dd-h .hp{font-weight:600;font-size:14px;flex:1}
+  .dd-h .hp.strike{text-decoration:line-through}
+  .dd-h .est{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:20px}
+  .est.activa{background:#DFF1ED;color:#0e6a5c}.est.confirmar{background:#FFF3D6;color:#8a6400}
+  .est.poco{background:#EEF2F1;color:#5C7076}.est.descartada{background:#FBE7E2;color:#9a2f1a}
+  .pbar{height:7px;background:#E7EEED;border-radius:6px;overflow:hidden;margin-bottom:8px}
+  .pbar span{display:block;height:100%;border-radius:6px}
+  .pc{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .pc .col{font-size:12px}
+  .pc .lbl{font-family:'JetBrains Mono';font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px}
+  .pc .favor .lbl{color:var(--green)}.pc .contra .lbl{color:var(--coral)}
+  .pc ul{margin:0;padding-left:14px;color:var(--muted)}.pc li{margin-bottom:2px}
+
+  /* Debrief */
+  .reveal{border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .reveal .dx{font-family:'Libre Franklin';font-weight:800;font-size:20px;color:var(--petrol);margin:2px 0 4px}
+  .verdict{font-size:12px;font-weight:700;padding:4px 11px;border-radius:20px;display:inline-block;margin-bottom:8px}
+  .sub{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);font-weight:700;margin:14px 0 7px}
+  .reveal ul{margin:0;padding-left:18px;font-size:14px}.reveal li{margin-bottom:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand"><span class="logo">Diferencial<b>Guiado</b>·AI</span><span class="tag">Tutor socrático de DD</span></div>
+  </div>
+</header>
+
+<main>
+  <div class="col-main">
+    <section class="panel" id="setupPanel">
+      <div class="panel-h"><span class="eyebrow">Config</span><h3>Preparar caso</h3></div>
+      <div class="panel-b">
+        <div id="banner" class="banner"></div>
+        <div class="row2">
+          <div class="field"><label class="lab">Especialidad / área</label><input class="inp" id="area" placeholder="p. ej. Medicina interna, Urgencias, Neurología"></div>
+          <div class="field"><label class="lab">Nivel</label>
+            <select class="inp" id="nivel"><option value="grado">Grado</option><option value="mir" selected>Preparación MIR / avanzado</option><option value="residente">Residente</option></select></div>
+        </div>
+        <div class="field"><label class="lab">Enfoque / síndrome <span style="text-transform:none;font-weight:400">(opcional)</span></label>
+          <input class="inp" id="enfoque" placeholder="p. ej. dolor torácico, disnea aguda, cefalea, dolor abdominal…"></div>
+        <button class="btn btn-primary btn-block" id="genBtn">Generar caso e iniciar tutoría</button>
+        <details style="margin-top:12px"><summary style="font-size:12px;color:var(--muted);cursor:pointer;font-weight:600">Ajustes avanzados (API)</summary>
+          <div class="row2" style="margin-top:12px">
+            <div class="field"><label class="lab">OpenAI API Key</label><input class="inp" id="apiKey" type="password" placeholder="sk-…" autocomplete="off"><div class="hint">Solo en tu navegador. Compartida entre las apps.</div></div>
+            <div class="field"><label class="lab">Modelo</label><select class="inp" id="model"><option value="gpt-4o-mini" selected>gpt-4o-mini</option><option value="gpt-4o">gpt-4o</option><option value="gpt-4.1-mini">gpt-4.1-mini</option></select></div>
+          </div></details>
+      </div>
+    </section>
+
+    <section class="panel" id="casePanel" style="display:none">
+      <div class="panel-h"><span class="eyebrow">Tutoría</span><h3 id="caseTitle">Caso</h3>
+        <button class="btn btn-line" id="resetBtn" style="margin-left:auto">Nuevo caso</button></div>
+      <div style="padding-top:14px"><div class="present" id="present"></div></div>
+      <div id="chat"></div>
+      <div class="actions">
+        <button class="btn-line btn" id="dataBtn">🔎 Pedir dato / prueba</button>
+        <button class="btn-amber btn" id="closeBtn">Cerrar caso y ver diagnóstico →</button>
+      </div>
+      <div id="composer">
+        <textarea id="inp" placeholder="Propón tus hipótesis o razona en voz alta…  (Enter para enviar)"></textarea>
+        <button class="btn btn-primary" id="send">Enviar</button>
+      </div>
+    </section>
+
+    <section class="panel" id="debriefPanel" style="display:none">
+      <div class="panel-h"><span class="eyebrow">Debrief</span><h3>Diagnóstico y razonamiento</h3></div>
+      <div class="panel-b" id="debriefBody"></div>
+    </section>
+  </div>
+
+  <div class="col-side">
+    <div class="panel">
+      <div class="panel-h"><span class="eyebrow">Diferencial</span><h3>DD en construcción</h3></div>
+      <div class="panel-b" id="ddBox"><div class="dd-empty">El diagnóstico diferencial se irá construyendo aquí a medida que razones con el tutor.</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><span class="eyebrow">Cómo funciona</span><h3>Método socrático</h3></div>
+      <div class="panel-b" style="font-size:13.5px;color:var(--muted)">
+        <p style="margin:0 0 10px">El tutor <b style="color:var(--ink)">no te dará el diagnóstico</b>: te ayuda a razonar con preguntas.</p>
+        <p style="margin:0 0 10px">Propón hipótesis y pide <b style="color:var(--ink)">datos discriminantes</b> para subir o bajar su probabilidad.</p>
+        <p style="margin:0">Cuando estés seguro, <b style="color:var(--ink)">cierra el caso</b> y se revela el diagnóstico con debrief.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="foot">DiferencialGuiado·AI — variante del portfolio · tutor socrático · <code>vanilla HTML/JS · OpenAI · docx.js · jsPDF</code> · formativa</div>
+
+<script>
+/* ═══ KERNEL ═══ */
+const $=s=>document.querySelector(s);
+const el=(t,c)=>{const e=document.createElement(t);if(c)e.className=c;return e;};
+const APP={id:'diferencial',version:1};
+const K_KEY='ia_openai_key',K_MODEL='ia_openai_model',K_STATE=APP.id+':state';
+function loadCfg(){ $('#apiKey').value=localStorage.getItem(K_KEY)||''; const m=localStorage.getItem(K_MODEL); if(m)$('#model').value=m; }
+function saveCfg(){ localStorage.setItem(K_KEY,$('#apiKey').value.trim()); localStorage.setItem(K_MODEL,$('#model').value); }
+async function openai(messages,{json=false,temperature=0.6}={}){
+  const key=$('#apiKey').value.trim(); if(!key) throw new Error('NO_KEY');
+  const body={model:$('#model').value,messages,temperature}; if(json) body.response_format={type:'json_object'};
+  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(body)});
+  if(!r.ok){ const t=await r.text(); if(r.status===401) throw new Error('BAD_KEY'); throw new Error('API '+r.status+': '+t.slice(0,180)); }
+  return (await r.json()).choices[0].message.content;
+}
+async function agente(system,user,{json=false,temperature=0.6}={}){ const out=await openai([{role:'system',content:system},{role:'user',content:String(user)}],{json,temperature}); return json?JSON.parse(out):out; }
+function banner(msg,type='info'){ const b=$('#banner'); b.className='banner '+type; b.textContent=msg; b.style.display=msg?'block':'none'; }
+function busy(btn,on,label){ if(on){ btn.dataset.old=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span> '+(label||'…'); } else { btn.disabled=false; btn.innerHTML=btn.dataset.old||btn.innerHTML; } }
+function handleErr(e){ console.error(e);
+  if(e.message==='NO_KEY') banner('Introduce tu OpenAI API Key en «Ajustes avanzados (API)».','err');
+  else if(e.message==='BAD_KEY') banner('API Key no válida (401).','err');
+  else if(e instanceof SyntaxError){ pushMsg('sys','⚠ Formato inesperado del tutor. Reintenta.',{save:false}); }
+  else banner('⚠ '+e.message,'err'); }
+function saveState(o){ try{ localStorage.setItem(K_STATE,JSON.stringify({v:APP.version,data:o})); }catch(e){} }
+function loadState(){ try{ const s=JSON.parse(localStorage.getItem(K_STATE)); if(s&&s.v===APP.version) return s.data; localStorage.removeItem(K_STATE);}catch(e){} return null; }
+async function dlWord(filename,blocks){
+  const {Document,Packer,Paragraph,TextRun,HeadingLevel}=docx;
+  const P=(t,o={})=>new Paragraph({children:[new TextRun({text:String(t),...o})],spacing:{after:120}}); const ch=[];
+  blocks.forEach(b=>{ if(b.h1)ch.push(new Paragraph({text:b.h1,heading:HeadingLevel.HEADING_1}));
+    else if(b.h2)ch.push(new Paragraph({text:b.h2,heading:HeadingLevel.HEADING_2}));
+    else if(b.h3)ch.push(new Paragraph({text:b.h3,heading:HeadingLevel.HEADING_3}));
+    else if(b.p!==undefined)ch.push(P(b.p,b.opts||{}));
+    else if(b.bullets)b.bullets.forEach(x=>ch.push(new Paragraph({text:String(x),bullet:{level:0}})));
+    else if(b.kv)b.kv.forEach(([k,v])=>ch.push(new Paragraph({children:[new TextRun({text:k+': ',bold:true}),new TextRun({text:String(v)})],spacing:{after:80}})));
+    else if(b.spacer)ch.push(P('')); });
+  saveAs(await Packer.toBlob(new Document({sections:[{children:ch}]})),filename.endsWith('.docx')?filename:filename+'.docx');
+}
+function dlPDF(filename,blocks){
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({unit:'pt',format:'a4'}); const W=595,M=48; let y=56; const ink=[22,41,46],petrol=[14,75,84],muted=[92,112,118];
+  const line=(txt,size,style,color,gap)=>{ doc.setFont('helvetica',style||'normal'); doc.setFontSize(size||11); doc.setTextColor(...(color||ink));
+    doc.splitTextToSize(String(txt),W-M*2).forEach(l=>{ if(y>800){doc.addPage();y=56;} doc.text(l,M,y); y+=(size||11)*1.35; }); if(gap)y+=gap; };
+  doc.setFillColor(14,75,84); doc.rect(0,0,W,30,'F');
+  blocks.forEach(b=>{ if(b.h1)line(b.h1,17,'bold',petrol,4); else if(b.h2)line(b.h2,14,'bold',petrol,3); else if(b.h3)line(b.h3,12,'bold',ink,2);
+    else if(b.p!==undefined)line(b.p,11,'normal',ink,2); else if(b.bullets)b.bullets.forEach(x=>line('•  '+x,11,'normal',muted,1));
+    else if(b.kv)b.kv.forEach(([k,v])=>line(k+': '+v,11,'normal',ink,1)); else if(b.spacer)y+=8; });
+  doc.save(filename.endsWith('.pdf')?filename:filename+'.pdf');
+}
+
+/* ═══ APP ═══ */
+let ST={ caso:null, dialogo:[], dd:[], running:false, cache:{}, cerrado:false };
+
+/* ── AGENTE · Generador de caso ── */
+async function generarCaso(){
+  const area=$('#area').value.trim()||'Medicina interna'; const nivel=$('#nivel').value; const enfoque=$('#enfoque').value.trim();
+  const nivelTxt={grado:"grado (caso didáctico)",mir:"MIR/avanzado (realista con distractores)",residente:"residente (complejo)"}[nivel];
+  const sys=`Eres generador de casos para entrenar el diagnóstico diferencial en ${area}, nivel ${nivelTxt}.${enfoque?` Síndrome/enfoque: ${enfoque}.`:''}
+Devuelve SOLO JSON:
+{"titulo":"título breve","presentacion":"viñeta de presentación (edad, sexo, motivo, síntomas, signos y datos básicos) SIN indicar el diagnóstico",
+ "diagnostico_correcto":"…","diferenciales":["dx alternativo 1","2","3"],
+ "hallazgos_clave":[{"dato":"exploración o prueba concreta","resultado":"hallazgo realista"}],
+ "puntos_ensenanza":["clave de razonamiento 1","2"]}
+Coherencia clínica total. Incluye 4-8 hallazgos_clave que permitan discriminar entre diferenciales.`;
+  return await agente(sys,'Genera el caso.',{json:true,temperature:0.85});
+}
+
+/* ── AGENTE · Tutor socrático (respuesta + DD) ── */
+async function tutorTurn(){
+  const c=ST.caso;
+  const sys=`Eres un TUTOR CLÍNICO socrático de diagnóstico diferencial. Guías el razonamiento del alumno SIN desvelar el diagnóstico.
+Caso (SOLO tú lo conoces):
+- Presentación: ${c.presentacion}
+- Diagnóstico correcto (NO lo reveles JAMÁS hasta que el alumno cierre el caso): ${c.diagnostico_correcto}
+- Diferenciales relevantes: ${(c.diferenciales||[]).join('; ')}
+- Hallazgos clave: ${JSON.stringify(c.hallazgos_clave)}
+REGLAS:
+- Nunca digas el diagnóstico ni cuál hipótesis es la correcta; no confirmes ni niegues directamente la hipótesis final del alumno.
+- Responde de forma socrática: reconoce sus hipótesis, señala qué las apoya o les resta probabilidad y formula preguntas que le hagan discriminar (qué dato/prueba diferenciaría X de Y, qué esperarías si fuera X).
+- Integra en el razonamiento los datos ya revelados en la conversación.
+- Mantén el foco en construir y priorizar el diferencial. Tono docente, conciso (3-6 frases).
+Devuelve SOLO JSON:
+{"respuesta":"tu intervención socrática",
+ "diferencial":[{"hipotesis":"…","probabilidad":"alta|media|baja","estado":"activa|a confirmar|poco probable|descartada","a_favor":["…"],"en_contra":["…"]}]}
+Actualiza el diferencial cada turno según la conversación; ordénalo de mayor a menor probabilidad. Incluye las hipótesis que maneja el alumno y las relevantes, sin marcar cuál es la correcta.`;
+  const msgs=[{role:'system',content:sys}];
+  ST.dialogo.forEach(m=>{ if(m.rol==='alumno')msgs.push({role:'user',content:m.texto});
+    else if(m.rol==='tutor')msgs.push({role:'assistant',content:m.texto});
+    else if(m.rol==='datos')msgs.push({role:'user',content:'[Dato obtenido] '+m.texto}); });
+  const out=await openai(msgs,{json:true,temperature:0.5});
+  return JSON.parse(out);
+}
+
+/* ── Datos deterministas ── */
+function norm(s){ return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); }
+async function resolverDato(peticion){ const c=ST.caso; const ck=norm(peticion); if(ST.cache[ck])return ST.cache[ck];
+  const items=(c.hallazgos_clave||[]).map((h,i)=>`[${i}] ${h.dato}: ${h.resultado}`);
+  let idx=[]; if(items.length){ const sys=`Enrutador. Selecciona de la lista fija (no generes contenido).
+Datos/pruebas disponibles:\n${items.join('\n')}
+El alumno solicita: "${peticion}". Devuelve SOLO JSON {"indices":[...]} con los que correspondan (semánticamente). Si nada corresponde, {"indices":[]}.`;
+    try{ const p=JSON.parse(await openai([{role:'system',content:sys},{role:'user',content:peticion}],{json:true,temperature:0})); idx=(p.indices||[]).filter(i=>Number.isInteger(i)&&i>=0&&i<items.length); }catch(e){ idx=[]; } }
+  let txt = idx.length ? idx.map(i=>`${c.hallazgos_clave[i].dato}: ${c.hallazgos_clave[i].resultado}`).join('\n')
+    : 'Ese dato no aporta información relevante o no está disponible en este caso.';
+  ST.cache[ck]=txt; return txt; }
+
+/* ── Chat UI ── */
+function pushMsg(rol,texto,{save=true}={}){ if(save)ST.dialogo.push({rol,texto}); const chat=$('#chat');
+  if(rol==='sys'){ const m=el('div','msg sys'); m.textContent=texto; chat.appendChild(m); scrollChat(); return; }
+  const m=el('div','msg '+(rol==='datos'?'data':rol)); const who=el('div','who'); who.textContent=rol==='alumno'?'Tú':(rol==='tutor'?'Tutor':'Dato'); m.appendChild(who);
+  const body=el('div'); body.textContent=texto; m.appendChild(body); chat.appendChild(m); scrollChat();
+  if(save)saveState(ST); }
+function scrollChat(){ const c=$('#chat'); c.scrollTop=c.scrollHeight; }
+function typing(on){ let t=$('#typing'); if(on){ if(!t){ t=el('div','typing'); t.id='typing'; t.innerHTML='<span class="dot"></span><span class="dot"></span><span class="dot"></span>'; $('#chat').appendChild(t);} scrollChat(); } else if(t)t.remove(); }
+
+async function turnoTutor(){ typing(true); ST.running=true;
+  try{ const r=await tutorTurn(); typing(false); pushMsg('tutor',r.respuesta||'…'); if(r.diferencial){ ST.dd=r.diferencial; renderDD(); } saveState(ST); }
+  catch(e){ typing(false); handleErr(e); } finally{ ST.running=false; } }
+
+async function enviar(){ const inp=$('#inp'); const txt=inp.value.trim(); if(!txt||ST.running||ST.cerrado)return; inp.value=''; inp.style.height='44px';
+  pushMsg('alumno',txt); $('#send').disabled=true; try{ await turnoTutor(); } finally{ $('#send').disabled=false; } }
+
+async function pedirDato(){ if(ST.running||ST.cerrado)return; const q=prompt('¿Qué dato, exploración o prueba quieres solicitar?'); if(!q||!q.trim())return;
+  pushMsg('alumno','🔎 '+q.trim()); ST.running=true; typing(true);
+  try{ const r=await resolverDato(q.trim()); typing(false); pushMsg('datos',q.trim()+' → '+r); await turnoTutor(); }
+  catch(e){ typing(false); handleErr(e); } finally{ ST.running=false; } }
+
+/* ── DD panel ── */
+function renderDD(){ const box=$('#ddBox'); if(!ST.dd||!ST.dd.length){ box.innerHTML='<div class="dd-empty">El diferencial se irá construyendo aquí.</div>'; return; }
+  const pw={alta:'90%',media:'55%',baja:'25%'}; const pc={alta:'#0E4B54',media:'#D98A00',baja:'#9DB4B3'};
+  const estCls=e=>({'activa':'activa','a confirmar':'confirmar','poco probable':'poco','descartada':'descartada'}[e]||'activa');
+  box.innerHTML=ST.dd.map(d=>{ const est=(d.estado||'activa'); const desc=est==='descartada';
+    return `<div class="dd ${desc?'descartada':''}"><div class="dd-h"><span class="hp ${desc?'strike':''}">${d.hipotesis}</span><span class="est ${estCls(est)}">${est}</span></div>
+      <div class="pbar"><span style="width:${pw[d.probabilidad]||'40%'};background:${pc[d.probabilidad]||'#9DB4B3'}"></span></div>
+      <div class="pc"><div class="col favor"><div class="lbl">A favor</div><ul>${(d.a_favor||[]).map(x=>`<li>${x}</li>`).join('')||'<li>—</li>'}</ul></div>
+        <div class="col contra"><div class="lbl">En contra</div><ul>${(d.en_contra||[]).map(x=>`<li>${x}</li>`).join('')||'<li>—</li>'}</ul></div></div></div>`;
+  }).join('');
+}
+
+/* ── Debrief ── */
+async function cerrar(){ if(!ST.caso||ST.running)return; const final=prompt('Tu diagnóstico final:'); if(final===null)return;
+  ST.cerrado=true; ST.final=final.trim(); const btn=$('#closeBtn'); busy(btn,true,'Revelando…');
+  try{ const c=ST.caso;
+    const sys=`Eres tutor clínico. El alumno cierra el caso con su diagnóstico final: "${final||'(no aportado)'}".
+Diagnóstico correcto: ${c.diagnostico_correcto}. Diferenciales: ${(c.diferenciales||[]).join('; ')}. Puntos de enseñanza: ${(c.puntos_ensenanza||[]).join('; ')}.
+Evalúa el RAZONAMIENTO diferencial del alumno (no solo el acierto), a partir de la conversación.
+Devuelve SOLO JSON: {"acierto":"correcto|parcial|incorrecto","diagnostico":"${c.diagnostico_correcto}","explicacion":"por qué es el diagnóstico y cómo se llega","claves_diferenciacion":["qué distingue el dx de sus principales diferenciales"],"aciertos":["…"],"mejoras":["…"]}`;
+    const transcript=ST.dialogo.map(m=>({alumno:'ALUMNO',tutor:'TUTOR',datos:'DATO',sys:'—'}[m.rol]+': '+m.texto)).join('\n');
+    const ev=await agente(sys, transcript, {json:true,temperature:0.3}); ST.debrief=ev; renderDebrief(ev);
+    $('#debriefPanel').style.display='block'; $('#debriefPanel').scrollIntoView({behavior:'smooth'});
+    ['#inp','#send','#dataBtn','#closeBtn'].forEach(s=>{const e=$(s);if(e)e.disabled=true;}); saveState(ST);
+  }catch(e){ handleErr(e); } finally{ busy(btn,false); } }
+
+function renderDebrief(ev){ const b=$('#debriefBody');
+  const vc={correcto:'#1E9E8A',parcial:'#D98A00',incorrecto:'#D9573F'}[ev.acierto]||'#5C7076';
+  b.innerHTML=`<div class="reveal"><span class="verdict" style="background:${vc}22;color:${vc}">Tu diagnóstico: ${ev.acierto||'—'}</span>
+      <div class="dx">${ev.diagnostico||''}</div>
+      ${ST.final?`<div style="font-size:13px;color:var(--muted)">Propuesto por ti: «${ST.final}»</div>`:''}
+      <div class="sub">Explicación</div><p style="margin:0;font-size:14.5px">${ev.explicacion||''}</p>
+      ${arr('Claves de diferenciación',ev.claves_diferenciacion)}${arr('Puntos fuertes',ev.aciertos)}${arr('A mejorar',ev.mejoras)}</div>`;
+  const tb=el('div','toolbar'); tb.innerHTML='<button class="btn btn-primary" id="dlW">⬇ Word</button><button class="btn btn-ghost" id="dlP">⬇ PDF</button><button class="btn btn-line" id="againBtn">↺ Otro caso</button>';
+  b.appendChild(tb);
+  $('#dlW').onclick=()=>dlWord('diferencial_debrief',blocks()); $('#dlP').onclick=()=>dlPDF('diferencial_debrief',blocks()); $('#againBtn').onclick=resetAll;
+}
+function arr(t,a){ return (a&&a.length)?`<div class="sub">${t}</div><ul>${a.map(x=>`<li>${x}</li>`).join('')}</ul>`:''; }
+
+function blocks(){ const c=ST.caso; const ev=ST.debrief||{};
+  const b=[{h1:'Diagnóstico diferencial guiado — Debrief'},{kv:[['Diagnóstico',ev.diagnostico||c.diagnostico_correcto],['Propuesto por el alumno',ST.final||'—'],['Resultado',ev.acierto||'—']]},
+    {h3:'Presentación'},{p:c.presentacion},{h3:'Explicación'},{p:ev.explicacion||''}];
+  if(ev.claves_diferenciacion){b.push({h3:'Claves de diferenciación'});b.push({bullets:ev.claves_diferenciacion});}
+  if(ST.dd&&ST.dd.length){ b.push({h3:'Diferencial final'}); ST.dd.forEach(d=>b.push({p:`${d.hipotesis} — ${d.probabilidad} (${d.estado}). A favor: ${(d.a_favor||[]).join(', ')||'—'}. En contra: ${(d.en_contra||[]).join(', ')||'—'}`})); }
+  if(ev.aciertos){b.push({h3:'Puntos fuertes'});b.push({bullets:ev.aciertos});}
+  if(ev.mejoras){b.push({h3:'A mejorar'});b.push({bullets:ev.mejoras});}
+  return b;
+}
+
+/* ── Init caso / reset ── */
+async function iniciar(){ banner(''); const key=$('#apiKey').value.trim(); if(!key){ banner('Introduce tu API Key en «Ajustes avanzados».','info'); return; }
+  const btn=$('#genBtn'); busy(btn,true,'Generando caso…');
+  try{ const c=await generarCaso(); ST={caso:c,dialogo:[],dd:[],running:false,cache:{},cerrado:false};
+    $('#setupPanel').style.display='none'; $('#casePanel').style.display='block'; $('#debriefPanel').style.display='none';
+    $('#caseTitle').textContent=c.titulo||'Caso'; $('#present').innerHTML=`<h4>Presentación</h4>${c.presentacion}`;
+    $('#chat').innerHTML=''; renderDD();
+    pushMsg('sys','Analiza la presentación y propón tus hipótesis diagnósticas. El tutor te guiará sin darte la respuesta.',{save:false});
+    await turnoTutor(); // apertura socrática
+    saveState(ST);
+  }catch(e){ handleErr(e); } finally{ busy(btn,false); } }
+
+function resetAll(){ ST={caso:null,dialogo:[],dd:[],running:false,cache:{},cerrado:false}; localStorage.removeItem(K_STATE);
+  $('#chat').innerHTML=''; $('#ddBox').innerHTML='<div class="dd-empty">El diferencial se irá construyendo aquí.</div>';
+  $('#debriefPanel').style.display='none'; $('#casePanel').style.display='none'; $('#setupPanel').style.display='block';
+  ['#inp','#send','#dataBtn','#closeBtn'].forEach(s=>{const e=$(s);if(e)e.disabled=false;}); window.scrollTo({top:0,behavior:'smooth'}); }
+
+/* ── INIT ── */
+window.addEventListener('DOMContentLoaded',()=>{
+  loadCfg();
+  $('#apiKey').addEventListener('change',saveCfg); $('#model').addEventListener('change',saveCfg);
+  $('#genBtn').onclick=iniciar; $('#send').onclick=enviar; $('#dataBtn').onclick=pedirDato; $('#closeBtn').onclick=cerrar;
+  $('#resetBtn').onclick=()=>{ if(confirm('¿Descartar este caso?')) resetAll(); };
+  const inp=$('#inp'); inp.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); enviar(); }});
+  inp.addEventListener('input',()=>{ inp.style.height='44px'; inp.style.height=Math.min(inp.scrollHeight,130)+'px'; });
+  const prev=loadState();
+  if(prev&&prev.caso){ ST=prev; $('#setupPanel').style.display='none'; $('#casePanel').style.display='block';
+    $('#caseTitle').textContent=prev.caso.titulo||'Caso'; $('#present').innerHTML=`<h4>Presentación</h4>${prev.caso.presentacion}`;
+    $('#chat').innerHTML=''; prev.dialogo.forEach(m=>pushMsg(m.rol,m.texto,{save:false})); renderDD();
+    if(prev.cerrado&&prev.debrief){ renderDebrief(prev.debrief); $('#debriefPanel').style.display='block'; ['#inp','#send','#dataBtn','#closeBtn'].forEach(s=>{const e=$(s);if(e)e.disabled=true;}); } }
+});
+</script>
+</body>
+</html>
